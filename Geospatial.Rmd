@@ -1,0 +1,645 @@
+---
+title: "Geospatial Dynamics of Job Suburbanization, RTA Ridership, and Unemployment Trends in Cuyahoga County (2017-2022)"
+author: "Noah Leibowitz"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{python}
+
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import config
+
+shape_file = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv'
+  )
+cuyahogaCounty = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/cuyahogaCountyShapeFile.csv'
+  )
+Cuyahoga = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv'
+  )
+
+coordinates = shape_file[['CENTLAT', 'CENTLON']].dropna().drop_duplicates()
+
+```
+
+
+```{python}
+
+import googlemaps
+
+# Initialize Google Maps client with your API key
+
+# API Key
+gmaps = googlemaps.Client(key=config.GOOGLE_MAPS_API_KEY)
+
+```
+
+
+```{python}
+
+import folium
+
+# Create a base map centered around an initial location
+map_center = [coordinates['CENTLAT'].mean(), coordinates['CENTLON'].mean()]
+m = folium.Map(location=map_center, zoom_start=12)
+
+# Add markers for each coordinate
+for index, row in coordinates.iterrows():
+    folium.Marker([row['CENTLAT'], row['CENTLON']]).add_to(m)
+
+# Save map to an HTML file
+m.save(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/cuyahoga_map.html'
+  )
+
+```
+
+
+```{python}
+
+from geopy.distance import geodesic
+
+# Define downtown Cleveland's coordinates
+downtown_cleveland = (41.4993, -81.6944)
+
+# Function to compute distance
+def compute_distance(lat, lon):
+    return geodesic(downtown_cleveland, (lat, lon)).km
+
+# Apply function to each row
+coordinates['distance_from_downtown'] = (
+  coordinates.apply(lambda row: compute_distance(row['CENTLAT'], row['CENTLON']), axis=1)
+  )
+
+# Define urban and suburban based on a threshold (e.g., 10 km)
+threshold_km = 7
+coordinates['area_type'] = (
+  coordinates['distance_from_downtown'].apply(
+    lambda x: 'Urban' if x <= threshold_km else 'Suburban'
+    )
+  )
+
+```
+
+
+```{python}
+
+# Create base map centered on downtown Cleveland
+m = folium.Map(
+  location=downtown_cleveland, zoom_start=12, tiles="cartodbpositron"
+  )  # Use a Google Maps-like tile
+
+# Add a red marker for Downtown Cleveland
+folium.Marker(
+    downtown_cleveland, popup="Downtown Cleveland", icon=folium.Icon(
+      color="red"
+      )
+      ).add_to(m)
+
+# Define colors for Urban (blue) and Suburban (green)
+color_map = {'Urban': 'blue', 'Suburban': 'green'}
+
+# Add markers for each location
+for _, row in coordinates.iterrows():
+    folium.CircleMarker(
+        location=[row['CENTLAT'], row['CENTLON']],
+        radius=4,  # Adjust size
+        color=color_map[row['area_type']],
+        fill=True,
+        fill_color=color_map[row['area_type']],
+        fill_opacity=0.6,
+        popup=(
+          f"Type: {row['area_type']} - {round(row['distance_from_downtown'], 2)} km"
+          )
+    ).add_to(m)
+
+# Draw a red circle boundary for the Urban area (e.g., 10 km)
+folium.Circle(
+    location=downtown_cleveland,
+    radius=threshold_km * 1000,  # Convert km to meters
+    color="red",
+    fill=False,
+    popup="Urban Boundary (10km)"
+).add_to(m)
+
+# Save and display the map
+m.save('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban_suburban_map.html')
+
+```
+
+
+```{python}
+
+# Merge on w_geocode
+merged_data = pd.merge(Cuyahoga, shape_file, on='w_geocode')
+
+# Compute distance from downtown
+from geopy.distance import geodesic
+
+downtown_cleveland = (41.4993, -81.6944)
+
+def compute_distance(lat, lon):
+    return geodesic(downtown_cleveland, (lat, lon)).km
+
+merged_data['distance_from_downtown'] = merged_data.apply(
+  lambda row: compute_distance(row['CENTLAT'], row['CENTLON']), axis=1
+  )
+
+# Categorize as Urban/Suburban
+threshold_km = 7
+merged_data['area_type'] = merged_data['distance_from_downtown'].apply(
+  lambda x: 'Urban' if x <= threshold_km else 'Suburban'
+  )
+
+# Preview the cleaned data set
+merged_data.columns
+
+```
+
+
+```{python}
+
+from folium.plugins import HeatMap
+import folium
+
+# Assuming 'year' column exists in merged_data
+
+# Filter data for 2017 and 2022
+data_2017 = merged_data[merged_data['Year'] == 2017]
+data_2022 = merged_data[merged_data['Year'] == 2022]
+
+# Create base map centered on downtown Cleveland
+m_2017 = folium.Map(
+  location=(41.4993, -81.6944), zoom_start=11, tiles="cartodbpositron"
+  )
+m_2022 = folium.Map(
+  location=(41.4993, -81.6944), zoom_start=11, tiles="cartodbpositron"
+  )
+
+# Prepare job data for HeatMap (lat, lon, job count) for 2017
+heat_data_2017 = data_2017[['CENTLAT', 'CENTLON', 'C000']].values.tolist()
+# Prepare job data for HeatMap (lat, lon, job count) for 2022
+heat_data_2022 = data_2022[['CENTLAT', 'CENTLON', 'C000']].values.tolist()
+
+# Add HeatMap layer for 2017
+HeatMap(heat_data_2017, radius=15, blur=10, max_zoom=1).add_to(m_2017)
+
+# Add HeatMap layer for 2022
+HeatMap(heat_data_2022, radius=15, blur=10, max_zoom=1).add_to(m_2022)
+
+# Draw urban boundary (10 km circle) for 2017 map
+urban_radius_meters = 10 * 1000  # Convert km to meters
+folium.Circle(
+    location=(41.4993, -81.6944), 
+    radius=urban_radius_meters,
+    color="blue", 
+    fill=True,
+    fill_opacity=0.2,
+    popup="Urban Area (<=10 km from downtown)"
+).add_to(m_2017)
+
+# Draw urban boundary (10 km circle) for 2022 map
+folium.Circle(
+    location=(41.4993, -81.6944), 
+    radius=urban_radius_meters,
+    color="blue", 
+    fill=True,
+    fill_opacity=0.2,
+    popup="Urban Area (<=10 km from downtown)"
+).add_to(m_2022)
+
+# Save and display the maps
+m_2017.save(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/job_migration_heatmap_2017.html'
+  )
+m_2022.save(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/job_migration_heatmap_2022.html'
+  )
+
+```
+
+
+```{python}
+
+from PIL import Image, ImageOps
+import matplotlib.pyplot as plt
+
+# Load the images
+img_2017 = Image.open(
+  "C:/Users/njlei/OneDrive/Documents/JournalOfEcon/2017.png"
+  )
+img_2022 = Image.open(
+  "C:/Users/njlei/OneDrive/Documents/JournalOfEcon/2022.png"
+  )
+
+# Resize both images to the same size
+size = (800, 600)  # Set a fixed size (width, height)
+img_2017 = img_2017.resize(size)
+img_2022 = img_2022.resize(size)
+
+# Add black border around each image
+border_size = 1  # Border thickness in pixels
+img_2017 = ImageOps.expand(
+  img_2017, border=border_size, fill="black"
+  )
+img_2022 = ImageOps.expand(
+  img_2022, border=border_size, fill="black"
+  )
+
+# Create a side-by-side figure
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+# Display the images
+axes[0].imshow(img_2017)
+axes[0].axis("off")  # Hide axis
+axes[0].set_title(
+  "Total Jobs in 2017", fontsize=14, fontweight="bold", pad=5
+  )  # Reduce padding
+
+axes[1].imshow(img_2022)
+axes[1].axis("off")
+axes[1].set_title(
+  "Total Jobs in 2022", fontsize=14, fontweight="bold", pad=5
+  )  # Reduce padding
+
+# Adjust layout to reduce whitespace
+plt.subplots_adjust(top=0.85, bottom=0.05)  # Reduce space above and below
+plt.tight_layout(pad=2)  # Reduce padding between plots
+
+# Save the figure
+plt.savefig(
+  "C:/Users/njlei/OneDrive/Documents/JournalOfEcon/job_migration_comparison.png", 
+  dpi=300, bbox_inches="tight"
+  )
+plt.show()
+
+```
+
+
+```{python}
+
+# Aggregate total jobs by year and area_type (urban vs. suburban)
+job_by_year = (
+  merged_data.groupby(['Year', 'area_type'])['C000'].sum().reset_index()
+  )
+
+# Separate data for urban and suburban areas
+urban_data = job_by_year[job_by_year['area_type'] == 'Urban']
+suburban_data = job_by_year[job_by_year['area_type'] == 'Suburban']
+
+# Plot for urban areas
+plt.plot(
+  urban_data['Year'], urban_data['C000'], 
+  label="Urban", color="blue", marker="o"
+  )
+
+# Plot for suburban areas
+plt.plot(
+  suburban_data['Year'], suburban_data['C000'], 
+  label="Suburban", color="green", marker="o"
+  )
+
+# Adding titles and labels
+plt.title(
+  "Job Migration: Urban vs. Suburban (2017-2022)", 
+  fontsize=14, fontweight="bold"
+  )
+plt.xlabel("Year", fontsize=12)
+plt.ylabel("Total Jobs", fontsize=12)
+
+min_y = 90000
+max_y = 350000
+
+plt.ylim(min_y, max_y)  # Apply the custom y-axis limits
+
+# Add a legend to differentiate between urban and suburban
+plt.legend()
+
+# Display grid
+plt.grid(True)
+
+# Show the plot
+plt.tight_layout()
+plt.savefig(
+  "C:/Users/njlei/OneDrive/Documents/JournalOfEcon/job_migration_line_graph.png", 
+  dpi=400
+  )
+plt.show()
+
+```
+
+```{python}
+
+import pandas as pd
+import folium
+from folium.plugins import HeatMap
+from geopy.distance import geodesic
+
+# Load datasets
+shape_file = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv')
+cuyahoga = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv')
+
+# Merge coordinates into job data
+merged = pd.merge(cuyahoga, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+
+# Distance from downtown Cleveland
+downtown_coords = (41.4993, -81.6944)
+merged['distance_km'] = merged.apply(
+    lambda row: geodesic(downtown_coords, (row['CENTLAT'], row['CENTLON'])).km, axis=1
+)
+merged['area_type'] = merged['distance_km'].apply(lambda x: 'Urban' if x <= 8 else 'Suburban')
+
+# Pivot to get 2017 and 2022 job data
+pivot = merged.pivot_table(index='w_geocode', columns='Year', values='C000').reset_index()
+pivot.columns.name = None
+pivot = pivot.rename(columns={2017: 'jobs_2017', 2022: 'jobs_2022'})
+
+# Compute percent change
+pivot['percent_change'] = 100 * (pivot['jobs_2022'] - pivot['jobs_2017']) / pivot['jobs_2017']
+
+# Merge coordinates back
+pivot = pd.merge(pivot, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+pivot = pivot.dropna(subset=['percent_change', 'CENTLAT', 'CENTLON'])
+
+# Clip extreme values
+pivot['percent_change'] = pivot['percent_change'].clip(lower=-100, upper=100)
+
+# Create weighted heatmap data — higher weight = more job change (abs value)
+heat_data = [
+    [row['CENTLAT'], row['CENTLON'], row['percent_change']]
+    for _, row in pivot.iterrows()
+]
+
+# Create map
+m = folium.Map(location=[41.5, -81.7], zoom_start=11, tiles='cartodbpositron')
+
+# Add 8 km radius circle (Urban boundary)
+folium.Circle(
+    location=[41.4993, -81.6944],
+    radius=8 * 1000,  # 8 km radius in meters
+    color="blue",
+    fill=True,
+    fill_opacity=0.2,
+    popup="Urban Area (<= 8 km from Downtown)"
+).add_to(m)
+
+# Add heatmap
+HeatMap(
+    data=heat_data,
+    radius=20,       # Adjust spread
+    blur=15,
+    min_opacity=0.4,
+    max_val=100,     # Since we clipped between -100 and 100
+).add_to(m)
+
+# Save map
+m.save('job_percent_change_with_urban_boundary_8km_heatmap.html')
+
+```
+
+
+```{python}
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from geopy.distance import geodesic
+
+# Load the datasets
+shape_file = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv')
+cuyahoga = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv')
+
+# Merge the datasets to combine the coordinates
+merged = pd.merge(cuyahoga, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+
+# Define downtown Cleveland coordinates
+downtown_coords = (41.4993, -81.6944)
+
+# Calculate the distance from downtown Cleveland for each data point
+merged['distance_km'] = merged.apply(
+    lambda row: geodesic(downtown_coords, (row['CENTLAT'], row['CENTLON'])).km, axis=1
+)
+
+# Classify as 'Urban' or 'Suburban' based on 8 km threshold
+merged['area_type'] = merged['distance_km'].apply(lambda x: 'Urban' if x <= 8 else 'Suburban')
+
+# Aggregate the data by year and area_type (Urban/Suburban) and sum total jobs ('C000')
+job_by_year = merged.groupby(['Year', 'area_type'])['C000'].sum().reset_index()
+
+# Separate the data into urban and suburban areas
+urban_data = job_by_year[job_by_year['area_type'] == 'Urban']
+suburban_data = job_by_year[job_by_year['area_type'] == 'Suburban']
+
+# Create the plot
+plt.figure(figsize=(10, 6))
+
+# Plot for urban areas
+plt.plot(
+    urban_data['Year'], urban_data['C000'], 
+    label="Urban", color="blue", marker="o", linestyle='-', linewidth=2
+)
+
+# Plot for suburban areas
+plt.plot(
+    suburban_data['Year'], suburban_data['C000'], 
+    label="Suburban", color="green", marker="o", linestyle='-', linewidth=2
+)
+
+# Add titles and labels
+plt.title("Total Jobs in Urban vs. Suburban Areas (2017-2022)", fontsize=14, fontweight="bold")
+plt.xlabel("Year", fontsize=12)
+plt.ylabel("Total Jobs", fontsize=12)
+
+# Set the y-axis limits for clarity
+min_y = 90000
+max_y = 350000
+plt.ylim(min_y, max_y)
+
+# Add a legend to differentiate the two areas
+plt.legend()
+
+# Add gridlines for better readability
+plt.grid(True)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+
+# Optionally save the plot
+plt.savefig("C:/Users/njlei/OneDrive/Documents/JournalOfEcon/total_jobs_urban_suburban_line_graph.png", dpi=400)
+
+```
+
+```{python}
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from geopy.distance import geodesic
+
+# Load the datasets
+shape_file = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv')
+cuyahoga = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv')
+
+# Merge the datasets to combine the coordinates
+merged = pd.merge(cuyahoga, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+
+# Define downtown Cleveland coordinates
+downtown_coords = (41.4993, -81.6944)
+
+# Calculate the distance from downtown Cleveland for each data point
+merged['distance_km'] = merged.apply(
+    lambda row: geodesic(downtown_coords, (row['CENTLAT'], row['CENTLON'])).km, axis=1
+)
+
+# Classify as 'Urban' or 'Suburban' based on 8 km threshold
+merged['area_type'] = merged['distance_km'].apply(lambda x: 'Urban' if x <= 8 else 'Suburban')
+
+# Aggregate the data by year and area_type (Urban/Suburban) and sum total jobs ('C000')
+job_by_year = merged.groupby(['Year', 'area_type'])['C000'].sum().reset_index()
+
+# Calculate the percent change for each area type (Urban and Suburban)
+job_by_year['percent_change'] = job_by_year.groupby('area_type')['C000'].pct_change() * 100
+
+# Separate the data into urban and suburban areas
+urban_data = job_by_year[job_by_year['area_type'] == 'Urban']
+suburban_data = job_by_year[job_by_year['area_type'] == 'Suburban']
+
+# Create the plot
+plt.figure(figsize=(10, 6))
+
+# Plot for urban areas
+plt.plot(
+    urban_data['Year'], urban_data['percent_change'], 
+    label="Urban", color="blue", marker="o", linestyle='-', linewidth=2
+)
+
+# Plot for suburban areas
+plt.plot(
+    suburban_data['Year'], suburban_data['percent_change'], 
+    label="Suburban", color="green", marker="o", linestyle='-', linewidth=2
+)
+
+# Add titles and labels
+plt.title("Percent Change in Jobs: Urban vs. Suburban Areas (2017-2022)", fontsize=14, fontweight="bold")
+plt.xlabel("Year", fontsize=12)
+plt.ylabel("Percent Change in Jobs (%)", fontsize=12)
+
+# Set y-axis limits for clarity
+plt.ylim(-20, 40)  # Adjust to fit the percent change range
+
+# Add a legend to differentiate the two areas
+plt.legend()
+
+# Add gridlines for better readability
+plt.grid(True)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+
+# Optionally save the plot
+plt.savefig("C:/Users/njlei/OneDrive/Documents/JournalOfEcon/job_percent_change_urban_suburban_line_graph.png", dpi=400)
+
+```
+```{python}
+
+import pandas as pd
+import folium
+from folium.plugins import HeatMap
+from geopy.distance import geodesic
+
+# Load datasets
+shape_file = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv')
+cuyahoga = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv')
+
+# Merge coordinates into job data
+merged = pd.merge(cuyahoga, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+
+# Distance from downtown Cleveland
+downtown_coords = (41.4993, -81.6944)
+merged['distance_km'] = merged.apply(
+    lambda row: geodesic(downtown_coords, (row['CENTLAT'], row['CENTLON'])).km, axis=1
+)
+merged['area_type'] = merged['distance_km'].apply(lambda x: 'Urban' if x <= 8 else 'Suburban')
+
+# Pivot to get 2017 and 2022 job data
+pivot = merged.pivot_table(index='w_geocode', columns='Year', values='C000').reset_index()
+pivot.columns.name = None
+pivot = pivot.rename(columns={2017: 'jobs_2017', 2022: 'jobs_2022'})
+
+# Compute raw growth rate (absolute job increase)
+pivot['growth_rate'] = pivot['jobs_2022'] - pivot['jobs_2017']
+
+# Merge coordinates back
+pivot = pd.merge(pivot, shape_file[['w_geocode', 'CENTLAT', 'CENTLON']], on='w_geocode')
+pivot = pivot.dropna(subset=['growth_rate', 'CENTLAT', 'CENTLON'])
+
+# Clip extreme values (optional, depending on the range of your data)
+pivot['growth_rate'] = pivot['growth_rate'].clip(lower=0)  # You can adjust the lower bound if necessary
+
+# Create weighted heatmap data — higher weight = more job growth
+heat_data = [
+    [row['CENTLAT'], row['CENTLON'], row['growth_rate']]
+    for _, row in pivot.iterrows()
+]
+
+# Create map centered around Cuyahoga County
+m = folium.Map(location=[41.5, -81.7], zoom_start=11, tiles='cartodbpositron')
+
+# Add 8 km radius circle (Urban boundary)
+folium.Circle(
+    location=[41.4993, -81.6944],
+    radius=8 * 1000,  # 8 km radius in meters
+    color="blue",
+    fill=True,
+    fill_opacity=0.2,
+    popup="Urban Area (<= 8 km from Downtown)"
+).add_to(m)
+
+# Add heatmap
+HeatMap(
+    data=heat_data,
+    radius=20,       # Adjust spread
+    blur=15,
+    min_opacity=0.4,
+    max_val=max(pivot['growth_rate']),  # Maximum value set to the highest growth rate
+).add_to(m)
+
+# Save map as HTML
+m.save('job_growth_rate_with_urban_boundary_8km_heatmap.html')
+
+```
+
+
+```{python}
+
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+
+img_path = 'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/FINAL_HeatMap.png'
+img = mpimg.imread(img_path)
+
+# Create figure and axis
+fig, ax = plt.subplots(figsize=(10, 8))
+ax.imshow(img)
+ax.axis('off')  # Hide axis
+
+# Add title with smaller size
+plt.title('Job Growth in Cuyahoga County (2017–2022)', fontsize=16, weight='bold', pad=20)
+
+# Adjust layout to avoid cutting off title
+plt.tight_layout()
+plt.subplots_adjust(top=0.88)
+
+# Save properly with no cutoff
+plt.savefig('job_growth_heatmap_with_fixed_title.png', dpi=400, bbox_inches='tight')
+plt.show()
+
+```
+
