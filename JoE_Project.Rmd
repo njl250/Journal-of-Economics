@@ -1,0 +1,509 @@
+---
+title: "Geospatial Dynamics of Job Suburbanization, RTA Ridership, and Unemployment Trends in Cuyahoga County (2017-2022)"
+author: "Noah Leibowitz"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{python}
+
+import numpy as np
+import pandas as pd
+
+# Load the Unlinked Passenger Trips sheet as a data frame
+file_path = 'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/RTA_Data.xlsx'
+RTA = pd.read_excel(file_path, sheet_name='UPT')
+
+```
+
+
+```{python}
+
+# Filters RTA data frame to include routes in the Cleveland area 
+# and neighboring cities
+cleveland_area = RTA[RTA['UZA Name'] == 'Cleveland, OH']
+
+# Filters to include routes served by the RTA
+greater_cleveland = RTA[RTA['Agency'] == 
+'The Greater Cleveland Regional Transit Authority'].dropna()
+
+# Keeps only the non-year columns and year columns between 2017 and 2022
+greater_cleveland_filtered = greater_cleveland.loc[:, '1/2017':'1/2023']
+
+# Sum each column
+column_sums = greater_cleveland_filtered.sum(axis=0).values
+print(len(column_sums))
+
+# Create a date range from January 2017 to December 2022
+date_range = pd.date_range(start='1/1/2017', end='1/1/2023', freq='MS')  # MS means month start
+
+# Format the dates into 'm/yyyy' format
+dates = date_range.strftime('%m/%Y').to_numpy()
+print(len(dates))
+
+new_RTA = pd.DataFrame({'month/year': dates, 'total_ridership': column_sums})
+new_RTA = new_RTA.iloc[:-1]
+
+# Saved cleaned data set to a csv file
+greater_cleveland_filtered.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Greater_Cleveland_Filtered_Data_Frame.csv'
+  , index = False
+  )
+
+```
+
+
+```{python}
+
+# Read in csv grouped by year and mode and filter out 2023
+greater_cleveland_grouped = pd.read_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/df_grouped.csv')
+greater_cleveland_grouped = greater_cleveland_grouped[greater_cleveland_grouped['year'] < 2023]
+
+```
+
+
+```{python}
+
+# Load the data set on Unemployment Rate for Cuyahoga County
+unemployment_rate = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/unemployment_rate.csv'
+  )
+
+# Convert the observation_date from a string to a datetime object
+unemployment_rate['observation_date'] = pd.to_datetime(unemployment_rate
+['observation_date'])
+
+# Cleaned Unemployment Rate data frame
+filtered_ur = unemployment_rate[(
+  unemployment_rate['observation_date'] >= '2017-01-01') & (
+    unemployment_rate['observation_date'] < '2023-01-01')]
+
+# Rename 'OHCUYA5URN' column to 'unemployment_rate'
+filtered_ur = filtered_ur.rename(
+  columns = {'OHCUYA5URN': 'unemployment_rate'}
+  )
+
+# Array of unemployment rates
+UR_array = filtered_ur['unemployment_rate'].values
+print(len(UR_array))
+
+# Create a date range from January 2017 to December 2022
+date_range = pd.date_range(start='1/1/2017', end='12/1/2022', freq='MS')  # MS means month start
+
+# Format the dates into 'm/yyyy' format
+dates = date_range.strftime('%m/%Y').to_numpy()
+
+new_UR = pd.DataFrame({'month/year': dates, 'unemployment_rate': UR_array})
+  
+# Save cleaned data set to csv
+filtered_ur.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/UR.csv', 
+  index = False
+  )
+
+```
+
+
+```{python}
+
+# Create a data frame combining unemployment rate and RTA ridership
+UR_RTA = pd.merge(new_RTA, new_UR, on='month/year', how='inner')
+
+# Save cleaned data set to csv
+UR_RTA.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/UR.csv', 
+  index = False
+  )
+
+```
+
+
+```{python}
+
+WAC_2017 = pd.read_csv(
+    'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+    'Characteristics (WAC)/WAC_2017.csv'
+    )
+WAC_2017['Year'] = 2017
+
+
+WAC_2018 = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+  'Characteristics (WAC)/WAC_2018.csv'
+  )
+WAC_2018['Year'] = 2018
+  
+WAC_2019 = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+  'Characteristics (WAC)/WAC_2019.csv'
+  )
+WAC_2019['Year'] = 2019
+  
+WAC_2020 = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+  'Characteristics (WAC)/WAC_2020.csv'
+  )
+WAC_2020['Year'] = 2020
+  
+WAC_2021 = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+  'Characteristics (WAC)/WAC_2021.csv'
+  )
+WAC_2021['Year'] = 2021
+  
+WAC_2022 = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Workplace Area '
+  'Characteristics (WAC)/WAC_2022.csv'
+  )
+WAC_2022['Year'] = 2022
+
+# Uncleaned data frame on Workplace Area Characteristics
+WAC = pd.concat([WAC_2017, WAC_2018, WAC_2019, WAC_2020, WAC_2021, WAC_2022])
+WAC.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/WAC_combined.csv', 
+  index = False
+  )
+
+```
+
+
+```{python}
+
+nhgis_data = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/nhgis_blk2020_blk2010_39.csv'
+  )
+
+# Convert 'w_geocode' to string
+WAC['w_geocode'] = WAC['w_geocode'].astype(str)
+
+# Extract county code from the 'w_geocode' column
+WAC['county_code'] = WAC['w_geocode'].str[2:5]
+
+WAC['county_code'] = WAC['county_code'].astype(str)
+nhgis_data['blk2020ge'] = nhgis_data['blk2020ge'].astype(str)
+
+# Extracting the last 3 digits from blk2020ge to get the county code
+nhgis_data['county_code_nhg'] = nhgis_data['blk2020ge'].str[-3:]
+
+
+# The county code for Cuyahoga county is 035
+Cuyahoga = WAC[WAC['county_code'] == '035']
+Cuyahoga.columns
+
+Cuyahoga.to_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Cuyahoga.csv')
+
+```
+
+
+```{python}
+
+geo_frame = pd.read_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/US_Census_Blocks_v1_-991884477516254098.csv'
+  )
+
+# State code is 2 digits
+geo_frame['State FIPS Code'] = geo_frame['State FIPS Code'].astype(str).str.zfill(2)
+
+# County codes are 3 digits
+geo_frame['County FIPS Code'] = geo_frame['County FIPS Code'].astype(str).str.zfill(3)
+
+# Tract codes are 6 digits
+geo_frame['Tract'] = geo_frame['Tract'].astype(str).str.zfill(6)
+
+# Block codes are 4 digits
+geo_frame['Block'] = geo_frame['Block'].astype(str).str.zfill(4)
+
+# Creating new column with geocode
+geo_frame['w_geocode'] = (
+  (geo_frame['State FIPS Code']) + 
+  (geo_frame['County FIPS Code']) + 
+  (geo_frame['Tract']) + 
+  (geo_frame['Block'])
+  )
+
+## mergedFrame = pd.merge(Cuyahoga, geo_frame, on = 'w_geocode', how = 'inner')
+## cuyahogaCounty = mergedFrame[mergedFrame['County FIPS Code'] == '035']
+
+```
+
+
+```{python}
+
+import geopandas as gpd
+
+geog_frame = gpd.read_file(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/Shape Files/Census_Blocks.shp'
+  )
+
+# State code is 2 digits
+geog_frame['STATE'] = geog_frame['STATE'].astype(str).str.zfill(2)
+
+# County code is 3 digits
+geog_frame['COUNTY'] = geog_frame['COUNTY'].astype(str).str.zfill(3)
+
+# Tract code is 6 digits
+geog_frame['TRACT'] = geog_frame['TRACT'].astype(str).str.zfill(6)
+
+# Block code is 4 digits
+geog_frame['BLOCK'] = geog_frame['BLOCK'].astype(str).str.zfill(4)
+
+# Creating new column with geocode
+geog_frame['w_geocode'] = (
+  (geog_frame['STATE']) + 
+  (geog_frame['COUNTY']) + 
+  (geog_frame['TRACT']) + 
+  (geog_frame['BLOCK'])
+  )
+
+# Convert from square meters to square kilometers
+geog_frame['AREALAND'] = geog_frame['AREALAND'] / 1000000
+
+# Filter for areas with zero land area or zero population
+filtered_geog_frame = geog_frame[(
+  geog_frame['AREALAND'] > 0) & (geog_frame['POP100'] > 0
+  )].copy()
+
+# Creating a new column for population density (people per square km)
+filtered_geog_frame['population_density'] = (
+  filtered_geog_frame['POP100'] / filtered_geog_frame['AREALAND'].dropna()
+  )
+
+mergedFrame = pd.merge(
+  Cuyahoga, filtered_geog_frame[['w_geocode', 'population_density']], 
+  on = 'w_geocode', how = 'inner'
+  )
+cuyahogaCounty = mergedFrame[mergedFrame['county_code'] == '035']
+
+cuyahogaCounty['log_population_density'] = np.log10(cuyahogaCounty['population_density'])
+
+```
+
+
+```{python}
+
+# Calculate the mean of the log population density
+quantile_log_population_density = cuyahogaCounty['log_population_density'].quantile(0.75)
+
+# Classify as urban (1) or non-urban (0) based on whether the log population 
+# density is above or below the mean
+cuyahogaCounty['urban_or_not'] = np.where(cuyahogaCounty['log_population_density'] 
+>= quantile_log_population_density, 'Urban', 'Non-Urban')
+
+# Optionally, you can print the unique values in the new column to check if the 
+#classification worked as expected
+print(cuyahogaCounty['urban_or_not'].value_counts())
+
+import matplotlib.pyplot as plt
+
+# Plotting the histogram with borders on each bin
+plt.figure(figsize=(10, 6))
+plt.hist(
+  cuyahogaCounty[cuyahogaCounty['urban_or_not'] == 'Urban']['log_population_density'], 
+         bins=20, color='blue', alpha=0.7, edgecolor='black', label='Urban'
+         )
+
+plt.hist(
+  cuyahogaCounty[cuyahogaCounty['urban_or_not'] == 'Non-Urban']['log_population_density'], 
+         bins=50, color='green', alpha=0.7, edgecolor='black', label='Non-Urban'
+         )
+
+# Add a vertical line for the mean
+plt.axvline(
+  quantile_log_population_density, color='red', 
+  linestyle='dashed', linewidth=2, label='75 Percentile'
+  )
+
+# Add titles and labels
+plt.title('Log Population Density: Urban vs Non-Urban')
+plt.xlabel('Log(Population Density)')
+plt.ylabel('Frequency')
+
+# Add a legend
+plt.legend()
+
+# Show the plot
+plt.show()
+
+```
+
+
+```{python}
+
+# Saved cleaned data set to csv
+cuyahogaCounty.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/cuyahogaCountyShapeFile.csv', 
+  index = False
+  )
+
+```
+
+
+```{python}
+
+shape_file = gpd.read_file(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/U.S._Census_Blocks/Census_Blocks.shp'
+  )
+
+# State code is 2 digits
+shape_file['STATE'] = shape_file['STATE'].astype(str).str.zfill(2)
+
+# County code is 3 digits
+shape_file['COUNTY'] = shape_file['COUNTY'].astype(str).str.zfill(3)
+
+# Tract code is 6 digits
+shape_file['TRACT'] = shape_file['TRACT'].astype(str).str.zfill(6)
+
+# Block code is 4 digits
+shape_file['BLOCK'] = shape_file['BLOCK'].astype(str).str.zfill(4)
+
+# Creating new column with geocode
+shape_file['w_geocode'] = (
+  (shape_file['STATE']) + 
+  (shape_file['COUNTY']) + 
+  (shape_file['TRACT']) + 
+  (shape_file['BLOCK'])
+  )
+
+# Save shape file to csv
+shape_file.to_csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/shape_file.csv')
+  
+cuyahogaCounty_filtered = cuyahogaCounty[['urban_or_not', 'w_geocode']]
+
+joined = shape_file.merge(cuyahogaCounty_filtered, on='w_geocode')
+
+urban = joined[joined['urban_or_not'] == 'Urban']
+urban.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv', 
+  index = False
+  )
+
+suburban = joined[joined['urban_or_not'] != 'Urban']
+suburban.to_csv(
+  'C:/Users/njlei/OneDrive/Documents/JournalOfEcon/suburban.csv', 
+  index = False
+  )
+
+```
+
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(sf)
+
+# Load data
+suburban <- read.csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/suburban.csv')
+urban <- read.csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/urban.csv')
+
+# Convert to spatial objects
+df_urban_sf <- st_as_sf(
+  urban, coords = c("CENTLON", "CENTLAT"), crs = 4326
+  )
+df_suburban_sf <- st_as_sf(
+  suburban, coords = c("CENTLON", "CENTLAT"), crs = 4326
+  )
+
+# Add a column to distinguish them
+df_urban_sf$area_type <- "urban"
+df_suburban_sf$area_type <- "suburban"
+
+# Merge datasets
+df_combined <- bind_rows(df_urban_sf, df_suburban_sf)
+
+# Convert back to data frame for ggplot
+df_combined <- as.data.frame(st_coordinates(df_combined)) %>%
+  mutate(area_type = df_combined$area_type)
+
+# Plot using density contours to reduce clutter
+ggplot(df_combined, aes(x = X, y = Y, color = area_type)) +
+  geom_jitter(size = 0.3, alpha = 0.6, width = 0.0008, height = 0.0008) +  
+  scale_color_manual(values = c("urban" = "red", "suburban" = "blue")) +
+  theme_minimal(base_size = 18) +
+  labs(title = "Urban vs Suburban Areas in Cuyahoga County",
+       x = "Longitude", y = "Latitude", color = "Area Type") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 22),  # Title size
+    legend.text = element_text(size = 14),  # Bigger legend text
+    legend.title = element_text(size = 16)  # Bigger legend title
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5))
+    )
+
+```
+
+
+```{r}
+
+# Step 1: Read data
+UR_RTA <- read.csv('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/UR.csv')
+
+# Step 2: Run hyperbolic regression
+model <- nls(unemployment_rate ~ a + b / total_ridership, data = UR_RTA, start = list(a = 5, b = 1000))
+
+# Step 3: Extract model coefficients
+coefficients <- coef(model)
+r_squared <- cor(UR_RTA$unemployment_rate, predict(model))^2
+
+# Step 4: Create an improved scatter plot
+plot <- ggplot(UR_RTA, aes(x = total_ridership, y = unemployment_rate)) +
+  geom_point(color = "red", size = 3, alpha = 0.7) +  # Orange points with slight transparency
+  geom_smooth(method = "nls", formula = y ~ a + b / x, method.args = list(start = list(a = 5, b = 1000)), 
+              se = FALSE, color = "blue", size = 1.2) +  # Blue hyperbolic fit
+  labs(title = "Hyperbolic Regression: RTA Ridership vs Unemployment Rate",
+       x = "Total RTA Ridership", y = "Unemployment Rate") +
+  theme_minimal(base_size = 14) +  # Clean minimal theme with readable font
+  theme(plot.title = element_text(color = "black", face = "bold", size = 14),
+        axis.title = element_text(face = "bold"),
+        panel.grid.major = element_line(color = "gray85")) +  # Subtle gridlines
+  annotate("text", x = max(UR_RTA$total_ridership) * 0.7, y = max(UR_RTA$unemployment_rate) * 0.9,
+           label = paste("R^2 =", round(r_squared, 2)), size = 5, color = "black", fontface = "bold") +
+  annotate("text", x = max(UR_RTA$total_ridership) * 0.7, y = max(UR_RTA$unemployment_rate) * 0.85,
+           label = paste("a =", round(coefficients[1], 2)), size = 5, color = "black") +
+  annotate("text", x = max(UR_RTA$total_ridership) * 0.7, y = max(UR_RTA$unemployment_rate) * 0.8,
+           label = paste("b =", round(coefficients[2], 2)), size = 5, color = "black")
+
+# Display the plot
+print(plot)
+
+```
+
+
+```{r}
+
+# Load necessary libraries
+library(gridExtra)
+
+# Convert 'month/year' to Date format
+UR_RTA$Date <- as.Date(paste0("01/", UR_RTA$month.year), format = "%d/%m/%Y")
+
+plot_ridership <- ggplot(UR_RTA, aes(x = Date, y = total_ridership)) +
+  geom_line(color = "blue", size = 1.1) +  
+  geom_point(color = "blue", size = 2) +  
+  labs(title = "RTA Ridership (2017-2022)", x = "Year", y = "Total Ridership") +
+  theme_minimal(base_size = 14) +  
+  scale_x_date(
+    date_labels = "%Y", 
+    breaks = seq(as.Date("2017-01-01"), as.Date("2022-01-01"), by = "1 year"),  # Explicitly set breaks
+    expand = c(0.05, 0.05)  # Prevent ggplot from extending the axis
+  ) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", color = "black", hjust = 0.5, vjust = 1.5),  # Increased title size
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 12),
+    axis.text.y = element_text(color = "black", size = 12),
+    axis.title.x = element_text(size = 12, color = "black", face = "plain"),  # Removed bold
+    axis.title.y = element_text(size = 12, color = "black", face = "plain"),  # Removed bold
+    panel.grid.major = element_line(color = "gray90", linetype = "solid"),  
+    panel.grid.minor = element_blank(),  
+    panel.background = element_rect(fill = "#f9f9f9")  
+  )
+
+print(plot_ridership)
+ggsave('C:/Users/njlei/OneDrive/Documents/JournalOfEcon/ridership_graph.png', width = 10, dpi = 400)
+
+```
+
